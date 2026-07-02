@@ -62,20 +62,20 @@ typedef int64_t mqvpn_path_handle_t;
 /* ─── Error codes ─── */
 
 typedef enum {
-    MQVPN_OK = 0,
-    MQVPN_ERR_INVALID_ARG = -1,
-    MQVPN_ERR_NO_MEMORY = -2,
-    MQVPN_ERR_ENGINE = -3,         /* xquic engine error */
-    MQVPN_ERR_TLS = -4,            /* TLS handshake failure */
-    MQVPN_ERR_AUTH = -5,           /* PSK auth failure (403) */
-    MQVPN_ERR_PROTOCOL = -6,       /* MASQUE not supported */
-    MQVPN_ERR_POOL_FULL = -7,      /* server: IP pool exhausted */
-    MQVPN_ERR_MAX_CLIENTS = -8,    /* server: max clients reached */
-    MQVPN_ERR_AGAIN = -9,          /* back-pressure */
-    MQVPN_ERR_CLOSED = -10,        /* connection closed */
-    MQVPN_ERR_ABI_MISMATCH = -11,  /* callback ABI version mismatch */
-    MQVPN_ERR_TIMEOUT = -12,       /* connection timeout */
-    MQVPN_ERR_INVALID_STATE = -13, /* operation not valid in current state */
+    MQVPN_OK = 0,                    /* 操作成功 */
+    MQVPN_ERR_INVALID_ARG = -1,      /* 参数无效 */
+    MQVPN_ERR_NO_MEMORY = -2,        /* 内存不足 */
+    MQVPN_ERR_ENGINE = -3,           /* xquic 引擎错误 ; xquic engine error */
+    MQVPN_ERR_TLS = -4,              /* TLS 握手失败 ; TLS handshake failure */
+    MQVPN_ERR_AUTH = -5,             /* PSK 认证失败(403) ; PSK auth failure (403) */
+    MQVPN_ERR_PROTOCOL = -6,         /* MASQUE 协议不支持 ; MASQUE not supported */
+    MQVPN_ERR_POOL_FULL = -7,        /* 服务端：IP 地址池耗尽 ; server: IP pool exhausted */
+    MQVPN_ERR_MAX_CLIENTS = -8,      /* 服务端：已达最大客户端数量 ; server: max clients reached */
+    MQVPN_ERR_AGAIN = -9,            /* 背压(暂时不可写) ; back-pressure */
+    MQVPN_ERR_CLOSED = -10,          /* 连接已关闭 ; connection closed */
+    MQVPN_ERR_ABI_MISMATCH = -11,    /* 回调 ABI 版本不匹配 ; callback ABI version mismatch */
+    MQVPN_ERR_TIMEOUT = -12,         /* 连接超时 ; connection timeout */
+    MQVPN_ERR_INVALID_STATE = -13,   /* 当前状态下不允许此操作 ; operation not valid in current state */
 } mqvpn_error_t;
 
 /* ─── Enumerations ─── */
@@ -96,11 +96,12 @@ typedef enum {
 } mqvpn_mode_t;
 
 typedef enum {
-    MQVPN_SCHED_MINRTT = 0,
-    MQVPN_SCHED_WLB = 1,
-    MQVPN_SCHED_BACKUP_FEC =
-        2, /* FEC repair on standby path. Requires XQC_ENABLE_FEC build. */
-    MQVPN_SCHED_WLB_UDP_PIN = 3, /* WLB + 5-tuple pin for UDP flows. */
+    MQVPN_SCHED_MINRTT = 0,             /* 最小 RTT 优先调度 */
+    MQVPN_SCHED_WLB = 1,                /* 加权负载均衡（默认） */
+    MQVPN_SCHED_BACKUP_FEC =2,          /* 备用路径 FEC 修复。需要 XQC_ENABLE_FEC 编译选项。 */
+                                        /* FEC repair on standby path. Requires XQC_ENABLE_FEC build. */
+    MQVPN_SCHED_WLB_UDP_PIN = 3,        /* WLB + UDP 流五元组固定。 */
+                                        /* WLB + 5-tuple pin for UDP flows. */
 } mqvpn_scheduler_t;
 
 /* Flow-aware reorder-only datagram delivery (see reorder design spec).
@@ -110,14 +111,16 @@ typedef enum {
     MQVPN_REORDER_ON = 1,
 } mqvpn_reorder_mode_t;
 
+/* 逐规则重排 profile（§16.1）。值 0/1/2 为 ABI 固定值；preset
+ * 以追加方式添加（cellular_bond/fiber_lte），因此枚举不再是三值。 */
 /* Per-rule reorder profile (§16.1). Values 0/1/2 are ABI-fixed; presets are
  * appended (cellular_bond/fiber_lte) so the enum is no longer 3-valued. */
 typedef enum {
-    MQVPN_RPROF_QUIC_BULK = 0,     /* back-compat alias of CELLULAR_BOND preset */
-    MQVPN_RPROF_LOW_LATENCY = 1,   /* reserved; no preset in v1 (inert) */
-    MQVPN_RPROF_DEFAULT_UDP = 2,   /* matched but no reorder (OFF class) */
-    MQVPN_RPROF_CELLULAR_BOND = 3, /* preset: wait=50ms cap=1024 */
-    MQVPN_RPROF_FIBER_LTE = 4,     /* preset: wait=50ms cap=2048 */
+    MQVPN_RPROF_QUIC_BULK = 0,     /* CELLULAR_BOND preset 的向后兼容别名 */
+    MQVPN_RPROF_LOW_LATENCY = 1,   /* 保留；v1 未实现（无实际效果） */
+    MQVPN_RPROF_DEFAULT_UDP = 2,   /* 已匹配但不重排（OFF 类） */
+    MQVPN_RPROF_CELLULAR_BOND = 3, /* preset：wait=50ms cap=1024 */
+    MQVPN_RPROF_FIBER_LTE = 4,     /* preset：wait=50ms cap=2048 */
 } mqvpn_reorder_profile_t;
 
 typedef enum {
@@ -240,15 +243,15 @@ typedef struct {
 /* ─── Data structures ─── */
 
 typedef struct {
-    uint32_t struct_size;
-    uint8_t assigned_ip[4]; /* IPv4 tunnel IP (network order) */
-    uint8_t assigned_prefix;
-    uint8_t server_ip[4]; /* server tunnel IP */
-    uint8_t server_prefix;
-    int mtu;
-    uint8_t assigned_ip6[16]; /* IPv6 tunnel IP (all-zero = none) */
+    uint32_t struct_size;               /* 结构体大小 */
+    uint8_t assigned_ip[4];             /* 分配给客户端的 IPv4 隧道地址(网络字节序) */
+    uint8_t assigned_prefix;            /* 分配的 IPv4 前缀长度 */
+    uint8_t server_ip[4];               /* 服务端 IPv4 隧道地址 */
+    uint8_t server_prefix;              /* 服务端 IPv4 前缀长度 */
+    int mtu;                            /* 隧道 MTU */
+    uint8_t assigned_ip6[16];           /* 分配的 IPv6 隧道地址（全零 = 未分配） */
     uint8_t assigned_prefix6;
-    int has_v6; /* 1 = IPv6 assigned */
+    int has_v6;                         /* 1 = 已分配 IPv6 */
 } mqvpn_tunnel_info_t;
 
 typedef struct {
@@ -319,6 +322,7 @@ typedef struct {
 
 typedef void (*mqvpn_tun_output_fn)(const uint8_t *pkt, size_t len, void *user_ctx);
 
+// 隧道参数协商完成后由 libmqvpn 调用; 平台层需在此回调中完成 TUN 设备创建和地址配置
 typedef void (*mqvpn_tunnel_config_ready_fn)(const mqvpn_tunnel_info_t *info,
                                              void *user_ctx);
 
@@ -392,18 +396,21 @@ _Static_assert(offsetof(mqvpn_client_callbacks_t, abi_version) == 0,
 /* ─── Server callback table ─── */
 
 typedef struct {
-    uint32_t abi_version;
-    uint32_t struct_size;
+    uint32_t abi_version;       /* ABI 版本号 */
+    uint32_t struct_size;       /* 结构体大小 */
 
-    mqvpn_tun_output_fn tun_output;                   /* REQUIRED */
-    mqvpn_tunnel_config_ready_fn tunnel_config_ready; /* REQUIRED */
-    mqvpn_send_packet_fn send_packet;                 /* NULL = fd-only mode */
+    mqvpn_tun_output_fn tun_output;                   /* 必填：TUN 输出回调 */
+                                                      /* REQUIRED */
+    mqvpn_tunnel_config_ready_fn tunnel_config_ready; /* 必填：隧道配置就绪回调 */
+                                                      /* REQUIRED */
+    mqvpn_send_packet_fn send_packet;                 /* NULL = 仅 fd 模式 */
+                                                      /* NULL = fd-only mode */
 
-    mqvpn_log_fn log;
+    mqvpn_log_fn log;                                 /* 日志回调 */
     void (*on_client_connected)(const mqvpn_tunnel_info_t *info, uint32_t session_id,
-                                void *user_ctx);
+                                void *user_ctx);      /* 客户端连接事件回调 */
     void (*on_client_disconnected)(uint32_t session_id, mqvpn_error_t reason,
-                                   void *user_ctx);
+                                   void *user_ctx);   /* 客户端断开事件回调 */
 } mqvpn_server_callbacks_t;
 
 #define MQVPN_SERVER_CALLBACKS_INIT                      \

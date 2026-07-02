@@ -239,6 +239,7 @@ server_log(mqvpn_server_t *s, mqvpn_log_level_t level, const char *fmt, ...)
 #define LOG_W(s, ...) server_log(s, MQVPN_LOG_WARN, __VA_ARGS__)
 #define LOG_E(s, ...) server_log(s, MQVPN_LOG_ERROR, __VA_ARGS__)
 
+// 确保 mqvpn_server_t 的 API 调用始终发生在同一线程
 #ifndef NDEBUG
 #  ifdef _WIN32
 #    define ASSERT_TICK_THREAD(s)                                   \
@@ -365,11 +366,13 @@ cb_xqc_log_write(xqc_log_level_t lvl, const void *buf, size_t size, void *user_d
 
 /* ─── UDP send helper ─── */
 
+// 服务端实际执行 UDP 发送的函数
 static ssize_t
 svr_do_send(mqvpn_server_t *s, const unsigned char *buf, size_t size,
             const struct sockaddr *peer, socklen_t peerlen)
 {
     if (s->udp_fd < 0) return XQC_SOCKET_ERROR;
+
     ssize_t res;
     do {
         res = sendto(s->udp_fd, buf, size, 0, peer, peerlen);
@@ -380,11 +383,13 @@ svr_do_send(mqvpn_server_t *s, const unsigned char *buf, size_t size,
         return XQC_SOCKET_ERROR;
     }
     s->bytes_tx += (uint64_t)res;
+    
     return res;
 }
 
 /* ─── xquic transport callbacks ─── */
 
+// quic 引擎准备好了一个要发送的 QUIC UDP 数据包, 通过这个回调，将数据包交给应用层去实际发送到网络上
 static ssize_t
 cb_write_socket(const unsigned char *buf, size_t size, const struct sockaddr *peer,
                 socklen_t peerlen, void *conn_user_data)
@@ -393,6 +398,7 @@ cb_write_socket(const unsigned char *buf, size_t size, const struct sockaddr *pe
     return svr_do_send(conn->server, buf, size, peer, peerlen);
 }
 
+// cb_write_socket 的多路径版本回调
 static ssize_t
 cb_write_socket_ex(uint64_t path_id, const unsigned char *buf, size_t size,
                    const struct sockaddr *peer, socklen_t peerlen, void *conn_user_data)
@@ -409,6 +415,7 @@ cb_write_before_accept(const unsigned char *buf, size_t size, const struct socka
     return svr_do_send(s, buf, size, peer, peerlen);
 }
 
+// 接受新连接请求, QUIC 握手完成后, xquic 调用此函数通知有新连接被接受。当前实现仅记录日志,不做任何业务操作
 static int
 cb_accept(xqc_engine_t *engine, xqc_connection_t *conn, const xqc_cid_t *cid,
           void *user_data)
@@ -421,6 +428,7 @@ cb_accept(xqc_engine_t *engine, xqc_connection_t *conn, const xqc_cid_t *cid,
     return 0;
 }
 
+// QUIC/xquic 连接被拒绝时的回调
 static void
 cb_refuse(xqc_engine_t *engine, xqc_connection_t *conn, const xqc_cid_t *cid,
           void *user_data)
@@ -1247,10 +1255,12 @@ cb_dgram_mss_updated(xqc_h3_conn_t *h3_conn, size_t mss, void *user_data)
  *  Public API — Lifecycle
  * ================================================================ */
 
+// 创建并初始化 mqvpn 服务端实例
 mqvpn_server_t *
 mqvpn_server_new(const mqvpn_config_t *cfg, const mqvpn_server_callbacks_t *cbs,
                  void *user_ctx)
 {
+    // 参数校验
     if (!cfg || !cbs) return NULL;
     if (cbs->abi_version != MQVPN_CALLBACKS_ABI_VERSION) return NULL;
     if (!cbs->tun_output || !cbs->tunnel_config_ready) return NULL;
@@ -1268,7 +1278,7 @@ mqvpn_server_new(const mqvpn_config_t *cfg, const mqvpn_server_callbacks_t *cbs,
     s->ptb_tokens = PTB_RATE_LIMIT;
     s->boot_us = now_us();
 
-    /* Initialize address pool */
+    /* 地址池初始化 ; Initialize address pool */
     if (cfg->subnet[0] == '\0') {
         LOG_E(s, "subnet not configured");
         goto cleanup;
@@ -1284,7 +1294,7 @@ mqvpn_server_new(const mqvpn_config_t *cfg, const mqvpn_server_callbacks_t *cbs,
         }
     }
 
-    /* ── xquic engine setup ── */
+    /* ── xquic 引擎配置 ; xquic engine setup ── */
     xqc_engine_ssl_config_t engine_ssl;
     memset(&engine_ssl, 0, sizeof(engine_ssl));
     engine_ssl.private_key_file = cfg->tls_key[0] ? (char *)cfg->tls_key : NULL;
@@ -1293,23 +1303,24 @@ mqvpn_server_new(const mqvpn_config_t *cfg, const mqvpn_server_callbacks_t *cbs,
     engine_ssl.groups = XQC_TLS_GROUPS;
 
     xqc_engine_callback_t engine_cbs = {
-        .set_event_timer = cb_set_event_timer,
-        .log_callbacks =
+        .set_event_timer = cb_set_event_timer,          // 定时器管理，xquic 通过此回调请求在指定时间后触发事件，服务端用 event_base 实现
+        .log_callbacks =                                // 将 xquic 内部日志转发到 mqvpn 日志系统
             {
-                .xqc_log_write_err = cb_xqc_log_write,
-                .xqc_log_write_stat = cb_xqc_log_write,
+                .xqc_log_write_err = cb_xqc_log_write,  // 错误日志
+                .xqc_log_write_stat = cb_xqc_log_write, // 统计日志
             },
     };
 
+    // xquic 传输层回调结构体，定义服务端对 QUIC 传输事件的响应
     xqc_transport_callbacks_t tcbs = {
-        .server_accept = cb_accept,
-        .server_refuse = cb_refuse,
-        .write_socket = cb_write_socket,
-        .write_socket_ex = cb_write_socket_ex,
-        .stateless_reset = cb_stateless_reset,
-        .conn_send_packet_before_accept = cb_write_before_accept,
-        .path_created_notify = cb_path_created,
-        .path_removed_notify = cb_path_removed,
+        .server_accept = cb_accept,                                 // 接受新连接请求
+        .server_refuse = cb_refuse,                                 // 拒绝连接（超过上限或认证失败
+        .write_socket = cb_write_socket,                            // 将 QUIC 数据包写入 UDP socket
+        .write_socket_ex = cb_write_socket_ex,                      // 将 QUIC 数据包写入 UDP socket, 携带发送时间戳元数据
+        .stateless_reset = cb_stateless_reset,                      // 发送 stateless reset 令牌
+        .conn_send_packet_before_accept = cb_write_before_accept,   // 在 accept 之前需发出的包(如版本协商、retry)
+        .path_created_notify = cb_path_created,                     // 新网络路径建立通知(多路径场景)
+        .path_removed_notify = cb_path_removed,                     // 路径失效移除通知
     };
 
     /* xquic INFO emits per-packet logs (effectively DEBUG-grade noise that
@@ -1326,6 +1337,7 @@ mqvpn_server_new(const mqvpn_config_t *cfg, const mqvpn_server_callbacks_t *cbs,
     default: xqc_log_level = XQC_LOG_WARN; break;
     }
 
+    // 连接设置
     xqc_config_t xconfig;
     if (xqc_engine_get_default_config(&xconfig, XQC_ENGINE_SERVER) < 0) goto cleanup;
     xconfig.cfg_log_level = (xqc_log_level_t)xqc_log_level;
@@ -1352,28 +1364,31 @@ mqvpn_server_new(const mqvpn_config_t *cfg, const mqvpn_server_callbacks_t *cbs,
     mqvpn_build_conn_settings(&cs_input, &conn_settings);
     xqc_server_set_conn_settings(s->engine, &conn_settings);
 
-    /* H3 callbacks */
+    /* HTTP/3 初始化 ; H3 callbacks */
     xqc_h3_callbacks_t h3_cbs = {
+        // H3 连接回调
         .h3c_cbs =
             {
-                .h3_conn_create_notify = cb_h3_conn_create,
-                .h3_conn_close_notify = cb_h3_conn_close,
-                .h3_conn_handshake_finished = cb_h3_handshake_finished,
+                .h3_conn_create_notify = cb_h3_conn_create,                 // 连接建立通知
+                .h3_conn_close_notify = cb_h3_conn_close,                   // 连接关闭通知
+                .h3_conn_handshake_finished = cb_h3_handshake_finished,     // TLS 握手完成通知
             },
+        // H3 请求回调
         .h3r_cbs =
             {
-                .h3_request_create_notify = cb_request_create,
-                .h3_request_close_notify = cb_request_close,
-                .h3_request_read_notify = cb_request_read,
-                .h3_request_write_notify = cb_request_write,
+                .h3_request_create_notify = cb_request_create,      // 收到新 HTTP 请求（控制 API 的 JSON 指令即通过此路径到达）
+                .h3_request_close_notify = cb_request_close,        // 请求结束
+                .h3_request_read_notify = cb_request_read,          // 请求体数据可读
+                .h3_request_write_notify = cb_request_write,        // 响应体可继续写入
             },
+        // H3 扩展数据报回调
         .h3_ext_dgram_cbs =
             {
-                .dgram_read_notify = cb_dgram_read,
-                .dgram_write_notify = cb_dgram_write,
-                .dgram_acked_notify = cb_dgram_acked,
-                .dgram_lost_notify = cb_dgram_lost,
-                .dgram_mss_updated_notify = cb_dgram_mss_updated,
+                .dgram_read_notify = cb_dgram_read,                 // 收到数据报（即 VPN 隧道数据包，核心数据路径）
+                .dgram_write_notify = cb_dgram_write,               // 数据报发送完成，可继续发送
+                .dgram_acked_notify = cb_dgram_acked,               // 数据报被对端确认
+                .dgram_lost_notify = cb_dgram_lost,                 // 数据报丢失通知
+                .dgram_mss_updated_notify = cb_dgram_mss_updated,   // 数据报 MSS 更新通知（路径 MTU 变化时触发）
             },
     };
     if (xqc_h3_ctx_init(s->engine, &h3_cbs) != XQC_OK) goto cleanup;
@@ -1424,6 +1439,7 @@ mqvpn_server_destroy(mqvpn_server_t *s)
     free(s);
 }
 
+// 向已创建的 mqvpn_server_t 注入外部 UDP socket fd
 int
 mqvpn_server_set_socket_fd(mqvpn_server_t *s, int fd, const struct sockaddr *local_addr,
                            socklen_t local_addrlen)
@@ -1438,6 +1454,7 @@ mqvpn_server_set_socket_fd(mqvpn_server_t *s, int fd, const struct sockaddr *loc
     return MQVPN_OK;
 }
 
+// 启动 mqvpn 服务端, 通知平台层配置 TUN
 int
 mqvpn_server_start(mqvpn_server_t *s)
 {
@@ -1447,7 +1464,7 @@ mqvpn_server_start(mqvpn_server_t *s)
     if (s->started) return MQVPN_ERR_INVALID_ARG;
     s->started = 1;
 
-    /* Notify platform of TUN configuration via callback */
+    /* 构造隧道信息 ; Notify platform of TUN configuration via callback */
     mqvpn_tunnel_info_t info = {0};
     info.struct_size = sizeof(info);
 
@@ -1468,6 +1485,7 @@ mqvpn_server_start(mqvpn_server_t *s)
         info.has_v6 = 1;
     }
 
+    // 回调通知平台, 由平台层完成 TUN 设备创建、地址配置等操作
     s->cbs.tunnel_config_ready(&info, s->user_ctx);
 
     LOG_I(s, "server started (subnet=%s, max_clients=%d)", s->config.subnet,

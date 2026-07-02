@@ -341,13 +341,13 @@ mqvpn_reorder_parse_5tuple(const uint8_t *pkt, size_t len, mqvpn_flow_key_t *out
 
 /* A single port/protocol → profile rule (§15.1 / §16.1 repeated [ReorderRule]). */
 typedef struct {
-    uint8_t proto; /* L4 protocol (UDP = 17) */
-    uint16_t port; /* matched against src or dst (host order) */
+    uint8_t proto;                      /* L4 协议号（UDP = 17） */
+    uint16_t port;                      /* 匹配源或目的端口（主机字节序） */
     mqvpn_reorder_profile_t profile;
-    uint32_t explicit_wait_ms; /* per-rule override; 0 = unset */
-    uint32_t explicit_cap;     /* per-rule override; 0 = unset */
-    uint32_t resolved_wait_ms; /* filled by finalize */
-    uint32_t resolved_cap;     /* filled by finalize */
+    uint32_t explicit_wait_ms;          /* 逐规则 wait 覆盖值；0 = 未设置 */
+    uint32_t explicit_cap;              /* 逐规则 cap 覆盖值；0 = 未设置 */
+    uint32_t resolved_wait_ms;          /* finalize 阶段填充的最终值 */
+    uint32_t resolved_cap;              /* finalize 阶段填充的最终值 */
 } mqvpn_reorder_rule_t;
 
 /* Map a profile to its (wait_ms, cap) preset. Returns 1 and writes both outputs
@@ -372,29 +372,35 @@ mqvpn_reorder_profile_preset(mqvpn_reorder_profile_t profile, uint32_t *wait_ms,
 }
 
 typedef struct {
-    mqvpn_reorder_mode_t mode; /* master gate (§16.2 enabled) */
+    mqvpn_reorder_mode_t mode; /* 主开关（§16.2 启用） */
+                               /* master gate (§16.2 enabled) */
 
-    /* receiver-side (§16.2) */
-    uint32_t max_wait_ms;               /* v1 fixed gap wait */
-    uint32_t cap_packets_per_flow;      /* ring.cap, must be power of two */
-    uint64_t max_buffer_bytes_per_flow; /* per-flow byte limit */
-    uint16_t classify_window; /* ACK-direction classify window; 0 = demotion disabled */
-    uint16_t ack_demote_max_large_packets; /* demote threshold (count) */
-    uint32_t small_packet_threshold_bytes; /* inner UDP payload small/large split */
+    /* 接收端（§16.2） */
+    uint32_t max_wait_ms;                   /* v1 固定间隔等待时间(毫秒) ; v1 fixed gap wait */
+    uint32_t cap_packets_per_flow;          /* 环形缓冲区容量, 必须是 2 的幂 ; ring.cap, must be power of two */
+    uint64_t max_buffer_bytes_per_flow;     /* 每条流的字节上限 ; per-flow byte limit */
+    uint16_t classify_window;               /* ACK 方向分类窗口; 0 = 禁用降级; ACK-direction classify window; 0 = demotion disabled */
+    uint16_t ack_demote_max_large_packets;  /* 降级阈值(包计数) ; demote threshold (count) */
+    uint32_t small_packet_threshold_bytes;  /* 内层 UDP 载荷小/大包分界线 ; inner UDP payload small/large split */
 
+    /* 发送端与接收端重置协调（§10.5 / §14.2） */
     /* sender + receiver reset coordination (§10.5 / §14.2) */
-    uint32_t reset_mark_packets;  /* K: FLOW_RESET marks on new flow */
-    uint32_t reset_idle_grace_ms; /* honor FLOW_RESET when idle > this */
+    uint32_t reset_mark_packets;            /* K：新流上发送 FLOW_RESET 标记数 ; K: FLOW_RESET marks on new flow */
+    uint32_t reset_idle_grace_ms;           /* 空闲超过此时间时响应 FLOW_RESET ; honor FLOW_RESET when idle > this */
 
+    /* 表与池上限（§13.5 / §14） */
     /* table + pool limits (§13.5 / §14) */
-    uint32_t max_flows;                /* per-table cap (both sides) */
-    uint64_t global_max_buffer_bytes;  /* shared pool limit */
-    uint32_t ingress_idle_timeout_sec; /* inbound (receiver) idle eviction */
-    uint32_t egress_idle_timeout_sec;  /* outbound (sender) idle eviction */
+    uint32_t max_flows;                /* 每表容量上限(双方) ; per-table cap (both sides) */
+    uint64_t global_max_buffer_bytes;  /* 共享缓冲池上限 ; shared pool limit */
+    uint32_t ingress_idle_timeout_sec; /* 入站（接收端）空闲淘汰超时 ; inbound (receiver) idle eviction */
+    uint32_t egress_idle_timeout_sec;  /* 出站（发送端）空闲淘汰超时 ; outbound (sender) idle eviction */
 
+    /* 内部/测试开关 —— 不通过任何公共 setter 暴露 */
     /* internal/test knob — not exposed via any public setter */
     int eval_force_no_demotion;
 
+    /* 逐规则参数解析：当显式提供了全局 MaxWaitMs/CapPackets 时置位，
+     * 使该全局值穿透 profile 预设（mqvpn_reorder_config_finalize 中的优先级 2）。 */
     /* per-rule param resolution: set when a global MaxWaitMs/CapPackets was
      * explicitly provided, letting that global value punch through a profile
      * preset (tier 2 precedence in mqvpn_reorder_config_finalize). */

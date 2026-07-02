@@ -20,34 +20,39 @@
 #define XQC_SNDQ_MAX_PKTS 16384
 
 void
-mqvpn_apply_scheduler(xqc_conn_settings_t *cs, mqvpn_scheduler_t sched)
+mqvpn_apply_scheduler(xqc_conn_settings_t *cs, mqvpn_scheduler_t sched) // 根据调度器枚举设置 xquic 连接级回调与 FEC 参数
 {
+    // 调度器类型
     switch (sched) {
+    // 加权负载均衡 — 穿透到下一个 case
     case MQVPN_SCHED_WLB:
+    // WLB + UDP 流固定：共用同一个 WLB 回调；流粘性由 flow_hash_pkt 提供 hint
     case MQVPN_SCHED_WLB_UDP_PIN: cs->scheduler_callback = xqc_wlb_scheduler_cb; break;
+
+    // 主路径发包 + 备用路径发送 FEC 冗余修复包
     case MQVPN_SCHED_BACKUP_FEC:
-#if defined(XQC_ENABLE_FEC) && defined(XQC_ENABLE_XOR)
-        cs->scheduler_callback = xqc_backup_fec_scheduler_cb;
-        cs->enable_encode_fec = 1;
-        cs->enable_decode_fec = 1;
-        cs->fec_params.fec_encoder_schemes_num = 1;
-        cs->fec_params.fec_encoder_schemes[0] = MQVPN_FEC_SCHEME;
-        cs->fec_params.fec_decoder_schemes_num = 1;
-        cs->fec_params.fec_decoder_schemes[0] = MQVPN_FEC_SCHEME;
-        cs->fec_params.fec_code_rate = MQVPN_FEC_CODE_RATE;
-        cs->fec_params.fec_max_symbol_num_per_block = MQVPN_FEC_BLOCK_SIZE;
-        cs->fec_params.fec_mp_mode = XQC_FEC_MP_USE_STB;
+#if defined(XQC_ENABLE_FEC) && defined(XQC_ENABLE_XOR)              // 编译期检查 FEC 可用性
+        cs->scheduler_callback = xqc_backup_fec_scheduler_cb;       // 注册 xquic 内置的 backup+FEC 调度器回调
+        cs->enable_encode_fec = 1;                                  // 开启 FEC 编码（发送端生成修复包）
+        cs->enable_decode_fec = 1;                                  // 开启 FEC 解码（接收端利用修复包恢复丢包）
+        cs->fec_params.fec_encoder_schemes_num = 1;                 // 仅注册一种 FEC 编码方案
+        cs->fec_params.fec_encoder_schemes[0] = MQVPN_FEC_SCHEME;   // 使用 XOR 编码（低开销、低延迟）
+        cs->fec_params.fec_decoder_schemes_num = 1;                 // 仅注册一种 FEC 解码方案
+        cs->fec_params.fec_decoder_schemes[0] = MQVPN_FEC_SCHEME;   // 解码侧同样使用 XOR
+        cs->fec_params.fec_code_rate = MQVPN_FEC_CODE_RATE;         // 修复包与源包比率（0.1→10% 冗余）
+        cs->fec_params.fec_max_symbol_num_per_block = MQVPN_FEC_BLOCK_SIZE; // 每个 FEC block 最多 3 个源符号
+        cs->fec_params.fec_mp_mode = XQC_FEC_MP_USE_STB;                    // 多路径模式：修复包走备用(standby)路径
         /* fec_callback intentionally left zero — xqc_set_valid_*_scheme_cb()
            fills it after FEC scheme negotiation completes. */
 #else
         /* Built without FEC — silently degrade to MINRTT. main.c parser
            also rejects "backup_fec" at the CLI surface in this case, so this
            branch only protects against direct API callers. */
-        cs->scheduler_callback = xqc_minrtt_scheduler_cb;
+        cs->scheduler_callback = xqc_minrtt_scheduler_cb;                   // 无 FEC 支持时降级为最小 RTT 调度器
 #endif
         break;
-    case MQVPN_SCHED_MINRTT:
-    default: cs->scheduler_callback = xqc_minrtt_scheduler_cb; break;
+    case MQVPN_SCHED_MINRTT: // 最小 RTT：每包选延迟最低的路径
+    default: cs->scheduler_callback = xqc_minrtt_scheduler_cb; break;       // 默认兜底策略：最小 RTT 调度器
     }
 }
 

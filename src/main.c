@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 mp0rta and mqvpn contributors
 
-#include "libmqvpn.h"
+
 #include "log.h"
-#include "config.h"
-#include "json_mini.h"
 #include "auth.h"
+#include "config.h"
+#include "libmqvpn.h"
+#include "json_mini.h"
 #include "vpn_client.h"
 #include "vpn_server.h"
 #include "flow_sched.h"
@@ -13,16 +14,16 @@
 #include <xquic/xquic.h> /* for XQC_ENABLE_* compile-time defines */
 
 #ifdef _WIN32
-#  include "platform_windows.h"
-#  include <winsock2.h>
+#include <winsock2.h>
+#include "platform_windows.h"
 #else
-#  include "platform_linux.h"
-#  include "status.h"
+#include "status.h"
+#include "platform_linux.h"
 #endif
 
 #include <errno.h>
-#include <limits.h>
 #include <stdio.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <getopt.h>

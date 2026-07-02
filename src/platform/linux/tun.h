@@ -13,13 +13,13 @@
 #define MQVPN_TUN_EAGAIN (-2)
 
 typedef struct {
-    int fd;
-    char name[IFNAMSIZ];
-    struct in_addr addr;
-    struct in_addr peer_addr;
-    struct in6_addr addr6;
-    int has_v6;
-    int mtu;
+    int fd;                         /* TUN 设备文件描述符 */
+    char name[IFNAMSIZ];            /* 接口名称（如 "tun0"） */
+    struct in_addr addr;            /* 本端 IPv4 地址 */
+    struct in_addr peer_addr;       /* 对端 IPv4 地址 */
+    struct in6_addr addr6;          /* 本端 IPv6 地址 */
+    int has_v6;                     /* 是否启用了 IPv6 */
+    int mtu;                        /* 接口 MTU */
 } mqvpn_tun_t;
 
 /* Create a TUN device. dev_name may be NULL for auto-naming. */

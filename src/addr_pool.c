@@ -13,6 +13,7 @@
 #  include <arpa/inet.h>
 #endif
 
+// tun地址池初始化
 int
 mqvpn_addr_pool_init(mqvpn_addr_pool_t *pool, const char *cidr)
 {
@@ -100,6 +101,7 @@ mqvpn_addr_pool_release(mqvpn_addr_pool_t *pool, const struct in_addr *addr)
     }
 }
 
+// 取地址池中服务端使用的 IP 地址(即基址 + 1)
 void
 mqvpn_addr_pool_server_addr(const mqvpn_addr_pool_t *pool, struct in_addr *out)
 {

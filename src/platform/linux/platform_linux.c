@@ -1214,18 +1214,18 @@ cleanup:
  * ================================================================ */
 
 typedef struct {
-    mqvpn_server_t *server;
-    struct event_base *eb;
-    struct event *ev_tick;
-    struct event *ev_tun;
-    struct event *ev_socket;
-    struct event *ev_sigint;
-    struct event *ev_sigterm;
-    mqvpn_tun_t tun;
-    int tun_up;
-    int udp_fd;
-    int shutting_down;
-    ctrl_socket_t *ctrl;
+    mqvpn_server_t *server;             /* 服务器核心实例指针 */
+    struct event_base *eb;              /* libevent 事件循环基 */
+    struct event *ev_tick;              /* 定时器事件（周期性维护任务） */
+    struct event *ev_tun;               /* TUN 设备可读事件 */
+    struct event *ev_socket;            /* UDP socket 可读事件 */
+    struct event *ev_sigint;            /* SIGINT 信号事件 */
+    struct event *ev_sigterm;           /* SIGTERM 信号事件 */
+    mqvpn_tun_t tun;                    /* TUN 设备句柄 */
+    int tun_up;                         /* TUN 设备是否已启用 */
+    int udp_fd;                         /* UDP 监听 socket 文件描述符 */
+    int shutting_down;                  /* 服务器是否正在关闭 */
+    ctrl_socket_t *ctrl;                /* JSON 控制 API 套接字 */
 } server_platform_ctx_t;
 
 static void svr_on_tick(evutil_socket_t fd, short what, void *arg);
@@ -1263,6 +1263,7 @@ svr_on_tick(evutil_socket_t fd, short what, void *arg)
     svr_schedule_next_tick(sp);
 }
 
+// 将解密后的 VPN 数据包写入 TUN 设备
 static void
 svr_cb_tun_output(const uint8_t *pkt, size_t len, void *user_ctx)
 {
@@ -1270,6 +1271,7 @@ svr_cb_tun_output(const uint8_t *pkt, size_t len, void *user_ctx)
     if (sp->tun_up && sp->tun.fd >= 0) mqvpn_tun_write(&sp->tun, pkt, len);
 }
 
+// 隧道协商完成后创建并配置 TUN 设备
 static void
 svr_cb_tunnel_config_ready(const mqvpn_tunnel_info_t *info, void *user_ctx)
 {
@@ -1311,6 +1313,7 @@ svr_cb_tunnel_config_ready(const mqvpn_tunnel_info_t *info, void *user_ctx)
     }
 }
 
+// 将库内部日志转发到服务器平台的日志系统
 static void
 svr_cb_log(mqvpn_log_level_t level, const char *msg, void *user_ctx)
 {
@@ -1381,6 +1384,7 @@ svr_on_signal(evutil_socket_t sig, short what, void *arg)
     event_base_loopbreak(sp->eb);
 }
 
+// 创建并配置服务端 UDP 监听 socket
 static int
 svr_create_udp_socket(const char *addr, int port, struct sockaddr_storage *out_addr,
                       socklen_t *out_addrlen)
@@ -1531,28 +1535,28 @@ linux_platform_run_server(const mqvpn_server_cfg_t *cfg)
         goto cleanup;
     }
 
-    /* Start server (triggers tunnel_config_ready → TUN creation) */
+    /* 启动 mqvpn 服务端, 通知平台层配置 TUN ; Start server (triggers tunnel_config_ready → TUN creation) */
     if (mqvpn_server_start(sp.server) != MQVPN_OK) {
         LOG_ERR("server start failed");
         goto cleanup;
     }
 
-    /* Register socket read event */
+    /* 将 UDP socket fd 注册到 libevent 事件循环 ; Register socket read event */
     sp.ev_socket =
         event_new(sp.eb, sp.udp_fd, EV_READ | EV_PERSIST, svr_on_socket_read, &sp);
     event_add(sp.ev_socket, NULL);
 
-    /* Signal handlers */
+    /* 注册信号处理器到 libevent 事件循环 ; Signal handlers */
     sp.ev_sigint = evsignal_new(sp.eb, SIGINT, svr_on_signal, &sp);
     sp.ev_sigterm = evsignal_new(sp.eb, SIGTERM, svr_on_signal, &sp);
     event_add(sp.ev_sigint, NULL);
     event_add(sp.ev_sigterm, NULL);
 
-    /* Tick timer */
+    /* 创建周期性 tick 定时器 ; Tick timer */
     sp.ev_tick = event_new(sp.eb, -1, 0, svr_on_tick, &sp);
     svr_schedule_next_tick(&sp);
 
-    /* Control API (optional) */
+    /* 启动 JSON 控制 API ; Control API (optional) */
     if (cfg->control_port > 0) {
         sp.ctrl =
             ctrl_socket_create(sp.eb, cfg->control_addr, cfg->control_port, sp.server);

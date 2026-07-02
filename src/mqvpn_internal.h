@@ -29,43 +29,47 @@
 /* ─── Config (opaque to callers) ─── */
 
 struct mqvpn_config_s {
-    char server_host[256];
-    char tls_server_name[256];
-    int server_port;
-    char auth_key[256];
-    char user_names[MQVPN_MAX_USERS][64];
-    char user_keys[MQVPN_MAX_USERS][256];
-    int n_users;
-    int insecure;
+    char server_host[256];                  /* 远程服务器地址 */
+    char tls_server_name[256];              /* TLS SNI 名称 */
+    int server_port;                        /* 服务器端口 */
+    char auth_key[256];                     /* 客户端认证预共享密钥 */
+    char user_names[MQVPN_MAX_USERS][64];   /* 服务器端用户列表 */
+    char user_keys[MQVPN_MAX_USERS][256];   /* 服务器端用户密钥列表 */
+    int n_users;                            /* 已配置用户数 */
+    int insecure;                           /* 是否跳过 TLS 证书验证 */
 
-    mqvpn_scheduler_t scheduler;
-    mqvpn_cc_t cc;
-    mqvpn_log_level_t log_level;
-    int multipath;
-    int reconnect_enable;
-    int reconnect_interval_sec;
-    int killswitch_hint;
+    mqvpn_scheduler_t scheduler;            /* 调度器策略 */
+    mqvpn_cc_t cc;                          /* 拥塞控制算法 */
+    mqvpn_log_level_t log_level;            /* 日志级别 */
+    int multipath;                          /* 是否启用多路径 */
+    int reconnect_enable;                   /* 是否启用自动重连 */
+    int reconnect_interval_sec;             /* 重连间隔（秒） */
+    int killswitch_hint;                    /* kill-switch 提示标志 */
 
-    /* Clock injection (Android: CLOCK_BOOTTIME) */
+    /* 时钟注入 */
     mqvpn_clock_fn clock_fn;
     void *clock_ctx;
 
-    /* Server-only fields */
-    char listen_addr[256];
-    int listen_port;
-    char subnet[64];
-    char subnet6[64];
-    char tls_cert[256];
-    char tls_key[256];
-    int max_clients;
+    /* 以下为服务端专用字段 */
+    char listen_addr[256];               /* 监听地址 */
+    int listen_port;                     /* 监听端口 */
+    char subnet[64];                     /* 客户端 IPv4 地址池 CIDR */
+    char subnet6[64];                    /* 客户端 IPv6 地址池 CIDR */
+    char tls_cert[256];                  /* TLS 证书路径 */
+    char tls_key[256];                   /* TLS 私钥路径 */
+    int max_clients;                     /* 最大并发客户端数 */
 
-    /* draft-21 §4.6: initial Maximum Path Identifier we advertise in TP.
-     * 0 = use xquic default (XQC_DEFAULT_INIT_MAX_PATH_ID = 8). */
+    /* draft-21 §4.6: 初始最大 Path Identifier（传输参数中通告的值）。
+     * 0 = 使用 xquic 默认值（XQC_DEFAULT_INIT_MAX_PATH_ID = 8）。 */
     uint64_t init_max_path_id;
 
-    int tun_mtu; /* 0 = auto (client: negotiated; server: 1382), >0 = client cap / server
+    /* MTU，0 = 自动（客户端：协商值；服务端：1382），>0 = 客户端上限/服务端 TUN MTU */
+    /* tun_mtu: 0 = auto (client: negotiated; server: 1382), >0 = client cap / server
                     TUN MTU */
+    int tun_mtu;
 
+    /* 流感知重排 shim 配置（§16）。由 mqvpn_reorder_config_default() 初始化，
+     * 库使用者通过 cfg->reorder 读取。 */
     /* Flow-aware reorder shim config (§16). Seeded with
      * mqvpn_reorder_config_default() in mqvpn_config_new(); the library
      * consumer reads cfg->reorder. */

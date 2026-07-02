@@ -238,6 +238,7 @@ mqvpn_config_set_tls_server_name(mqvpn_config_t *cfg, const char *name)
     return MQVPN_OK;
 }
 
+// 设置客户端/服务端认证预共享密钥(PSK)
 int
 mqvpn_config_set_auth_key(mqvpn_config_t *cfg, const char *key)
 {
@@ -247,6 +248,7 @@ mqvpn_config_set_auth_key(mqvpn_config_t *cfg, const char *key)
     return MQVPN_OK;
 }
 
+// 向服务端配置中添加或更新一个用户
 int
 mqvpn_config_add_user(mqvpn_config_t *cfg, const char *username, const char *key)
 {
@@ -279,6 +281,7 @@ mqvpn_config_add_user(mqvpn_config_t *cfg, const char *username, const char *key
     return MQVPN_OK;
 }
 
+// 从服务端配置中删除指定用户
 int
 mqvpn_config_remove_user(mqvpn_config_t *cfg, const char *username)
 {
@@ -527,6 +530,7 @@ mqvpn_config_set_clock(mqvpn_config_t *cfg, mqvpn_clock_fn clock_fn, void *clock
     return MQVPN_OK;
 }
 
+// 设置服务端监听地址和端口
 int
 mqvpn_config_set_listen(mqvpn_config_t *cfg, const char *addr, int port)
 {
@@ -536,6 +540,7 @@ mqvpn_config_set_listen(mqvpn_config_t *cfg, const char *addr, int port)
     return MQVPN_OK;
 }
 
+// 设置服务端客户端 IPv4 地址池(CIDR 格式)
 int
 mqvpn_config_set_subnet(mqvpn_config_t *cfg, const char *cidr)
 {
@@ -544,6 +549,7 @@ mqvpn_config_set_subnet(mqvpn_config_t *cfg, const char *cidr)
     return MQVPN_OK;
 }
 
+// 设置服务端客户端 IPv6 地址池(CIDR 格式)
 int
 mqvpn_config_set_subnet6(mqvpn_config_t *cfg, const char *cidr6)
 {
@@ -552,6 +558,7 @@ mqvpn_config_set_subnet6(mqvpn_config_t *cfg, const char *cidr6)
     return MQVPN_OK;
 }
 
+// 设置服务端 TLS 证书和私钥文件路径
 int
 mqvpn_config_set_tls_cert(mqvpn_config_t *cfg, const char *cert, const char *key)
 {
@@ -561,6 +568,7 @@ mqvpn_config_set_tls_cert(mqvpn_config_t *cfg, const char *cert, const char *key
     return MQVPN_OK;
 }
 
+// 设置服务端最大并发客户端数量
 int
 mqvpn_config_set_max_clients(mqvpn_config_t *cfg, int max)
 {
